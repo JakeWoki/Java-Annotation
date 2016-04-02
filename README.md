@@ -1,7 +1,7 @@
 # Java-Annotation
 
 http://www.race604.com/annotation-processing/
-Java注解处理器
+<br>Java注解处理器
 09 FEBRUARY 2015 on Android
 Java中的注解(Annotation)是一个很神奇的东西，特别现在有很多Android库都是使用注解的方式来实现的。一直想详细了解一下其中的原理。很有幸阅读到一篇详细解释编写注解处理器的文章。本文的原文是ANNOTATION PROCESSING 101，作者是Hannes Dorfmann。这是一篇好文，忍不住翻译学习一下。以下是翻译。
 
@@ -804,3 +804,174 @@ FragmentArgs非常类似于ButterKnife。它使用反射机制来创建对象，
 我在后续的博客中将会写注解处理器的单元测试，敬请关注。
 
 翻译到此结束。文章确实太长了，花了我好几天的时间，如果翻译过程中有什么错误，请指出来，也可以参考作者的原文。翻译不容易，写这篇文章的原作者更不容易。能够在这种优秀的博文中，学习到作者的认真的态度也是很值得的。
+
+
+<br>http://fyales.com/2015/08/21/Annotation/
+<br>Java注解
+
+AndroidJava技术
+Annotation基础
+在Java中，我们可以使用注解来给程序进行配置，并且可以用它来实现程序中的重要功能，减轻我们的工作量。
+注解的语法很简单，一般是首部添加@进行标识，我们在开发过程中经常遇到的三个注解@Override,@Deprecated,@SuppressWarning，它们被称为标记注解（marker annotation ），一般用它们标识一些信息，它们的具体含义如下：
+@Override,表示当前的方法定义将覆盖超类中的方法，如果出现错误，编译器就会报错。
+@Deprecated:如果使用此注解，编译器会出现警告信息。
+@SuppressWarnings:忽略编译器的警告信息。
+另外，Java还提供了四种注解让我们可以创建新的注解,这些注解被称为元注解(meta annotation)下面我们就来定义一个注解来举例说明
+package com.company.anno;
+import java.lang.annotation.*;
+
+/**
+ * 注解测试
+ * Created by fyales on 15/5/22.
+ */
+@Documented
+@Inherited
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface User {
+    public int id();
+    public String name() default "fyales";
+}
+@interface来声明一个注解，元注解负责注解你自己的定义的注解
+注解名	含义
+@Target	表示该注解用于什么地方，可能的ElementType参数包括:
+CONSTRUCTOR:构造器的声明
+FIELD:域声明
+LOCAL_VARIABLE:局部变量声明
+METHOD:方法声明
+PACKAGE:包声明
+PARAMETER:参数声明
+TYPE:类，接口或enum声明
+@Retention	表示在什么级别保留此信息，可选的RetentionPolicy参数包括:
+SOURCE:注解仅存在代码中，注解会被编译器丢弃
+CLASS:注解会在class文件中保留，但会被VM丢弃
+RUNTIME:VM运行期间也会保留该注解，因此可以通过反射来获得该注解
+@Documented	将注解包含在javadoc中
+@Inherited	允许子类继承父类中的注解
+之所以定义一个注解，是因为我们需要使用它，在这里写一个最基本的解析器，以上文的注解举例：
+package com.fyales.tracker;
+import com.fyales.anno.User;
+import java.lang.reflect.Method;
+
+/**
+ * Created by fyales on 15/5/22.
+ */
+public class UseCaseTracker {
+    public static void  trackerUserCase(Class<?> cl){
+        for (Method method:cl.getDeclaredMethods()){
+            User info = method.getAnnotation(User.class);
+            if (info != null){
+                System.out.println("The id is " + info.id());
+                System.out.println("The name is " + info.name());
+            }
+        }
+    }
+}
+接下来我们进行调用:
+package com.fyales;
+import com.fyales.anno.User;
+import com.fyales.tracker.UseCaseTracker;
+
+public class Main {
+
+    public static void main(String[] args) {
+        UseCaseTracker.trackerUserCase(Main.class);
+    }
+
+    @User(id = 34)
+    public void getPeople(){}
+
+    @User(id = 45,name = "Jack")
+    public void one(){}
+
+    @User(id = 23,name = "Two")
+    public void two(){}
+}
+注解处理器
+上面我们讨论的是在运行时通过反射处理注解，但在实际运用过程中，我们一般不这样做，我们通常的做法一般是编译时处理注解，然后生成特定的java文件
+注解处理器在编译的时候扫描和处理注解，每个注解处理器都继承于AbstractProcessor,在这里我们写一个最简单的Processor:
+package com.fyales.annotation;
+
+import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.ProcessingEnvironment;
+import javax.annotation.processing.RoundEnvironment;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.TypeElement;
+import javax.tools.Diagnostic;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+/**
+ * 注解解析器
+ * @author fyales
+ */
+public class FyalesProcessor extends AbstractProcessor {
+
+    @Override
+    public synchronized void init(ProcessingEnvironment processingEnv) {
+        super.init(processingEnv);
+    }
+
+    @Override
+    public Set<String> getSupportedAnnotationTypes() {
+        Set<String> types = new LinkedHashSet<String>();
+        types.add(User.class.getCanonicalName());
+        return types;
+    }
+
+    @Override
+    public SourceVersion getSupportedSourceVersion() {
+        return super.getSupportedSourceVersion();
+    }
+
+    @Override
+    public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        for (TypeElement e : annotations){
+            for (Element ele : roundEnv.getElementsAnnotatedWith(User.class)){
+                User u = ele.getAnnotation(User.class);
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,u.name());
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,"我是注解处理器里面的内容");
+            }
+        }
+        return true;
+    }
+}
+init(ProcessingEnvironment env): 此方法会被注解处理工具调用，并输入ProcessingEnviroment参数。ProcessingEnviroment提供很多有用的工具类Elements, Types和Filer。
+process(Set<? extends TypeElement> annotations, RoundEnvironment env): 这相当于每个处理器的主函数main()。你在这里写你的扫描、评估和处理注解的代码，以及生成Java文件。输入参数RoundEnviroment，可以让你查询出包含特定注解的被注解元素。
+getSupportedAnnotationTypes(): 这里你必须指定，这个注解处理器是注册给哪个注解的。注意，它的返回值是一个字符串的集合，包含本处理器想要处理的注解类型的合法全称。换句话说，你在这里定义你的注解处理器注册到哪些注解上。
+getSupportedSourceVersion(): 用来指定你使用的Java版本。通常这里返回SourceVersion.latestSupported()。然而，如果你有足够的理由只支持Java 6的话，你也可以返回SourceVersion.RELEASE_6。
+你自己写的注解处理器一般要覆写上面几个方法，至于具体如何生成java文件，我会在ButterKnife源码详解里面介绍。当你写完注解处理器时，就需要注册你的处理器，这时候你需要打包一个jar包，其目录结构如下
+com.fyales.annotation
+FyalesProcessor
+META_INF
+services
+javax.annotation.processing.Processor
+然后你需要在javax.annotation.processing.Processor注册你的解析器:
+com.fyales.annotation.FyalesProcessor
+最后打包成相应的jar文件就可以使用了。在这里，我们将这个jar文件用在Android项目里
+public class MainActivity extends AppCompatActivity {
+
+    @User(id = 4,name = "jack")
+    String user;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+    }
+｝
+直接进行编译，在Messages中结果如下:
+警告: jack
+警告: 我是注解处理器里面的内容
+结束语
+注解的基本使用在这里就基本结束了，这篇文章是为ButterKnife做了一个基本铺垫，敬请关注。
+###来源请求
+Java注解处理器
+
+<br>补充：
+<br>http://www.trinea.cn/android/java-annotation-android-open-source-analysis/
+<br>http://my.oschina.net/u/1463920/blog/512704
+<br>http://blog.csdn.net/kela_king/article/details/47682591
+<br>http://fyales.com/2015/09/01/ButterKnife/
+<br>http://fyales.com/2015/09/19/ButterKnifeTwo/
